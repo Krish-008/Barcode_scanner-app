@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Barcode Scanner</title>
+    <!-- 1. Include Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Include the Inter font family -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- 3. Include Quagga2 from its CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .photo-preview {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4/3;
+            overflow: hidden;
+            border-radius: 0.5rem;
+        }
+
+        .photo-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .status-badge {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status-processing {
+            background-color: #fbbf24;
+            color: #78350f;
+        }
+
+        .status-success {
+            background-color: #34d399;
+            color: #064e3b;
+        }
+
+        .status-error {
+            background-color: #f87171;
+            color: #7f1d1d;
+        }
+
+        .remove-btn {
+            position: absolute;
+            top: 0.5rem;
+            left: 0.5rem;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            background-color: rgba(239, 68, 68, 0.9);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-weight: bold;
+            z-index: 10;
+            font-size: 1.5rem;
+            line-height: 1;
+        }
+
+        .remove-btn:hover {
+            background-color: rgba(220, 38, 38, 1);
+        }
+
+        .progress-bar {
+            height: 0.5rem;
+            background-color: #e5e7eb;
+            border-radius: 0.25rem;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #3b82f6;
+            transition: width 0.3s ease;
+        }
+
+        .instruction-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        #photo-canvas {
+            display: none;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: #6b7280;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+
+    <div class="container mx-auto max-w-6xl">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-2">
+            📦 Bulk Barcode Scanner
+        </h1>
+        <p class="text-center text-gray-600 mb-6">Upload multiple photos and extract all barcodes instantly</p>
+
+        <!-- Instructions -->
+        <div class="instruction-box">
+            <h3 class="text-xl font-bold mb-3">📝 How to Use:</h3>
+            <ol class="list-decimal list-inside space-y-2 text-sm">
+                <li><strong>Take photos</strong> of your barcodes using your phone's camera app (ensures proper focus)</li>
+                <li><strong>Click the button below</strong> to select all the photos you just took</li>
+                <li><strong>Review</strong> the uploaded photos and remove any if needed</li>
+                <li><strong>Click "Scan All"</strong> to extract barcodes from all photos at once</li>
+                <li><strong>Export results</strong> as CSV or copy all barcodes to clipboard</li>
+            </ol>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">📤 Select Photos from Gallery</h2>
+            
+            <!-- File Upload Button -->
+            <div>
+                <label for="file-input" 
+                       class="block w-full py-6 px-6 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-center rounded-lg font-bold hover:from-blue-700 hover:to-blue-800 cursor-pointer transition duration-200 text-xl shadow-lg">
+                    📁 Select Multiple Photos
+                </label>
+                <input type="file" id="file-input" accept="image/*" multiple class="hidden">
+                <p class="text-sm text-gray-600 mt-3 text-center">
+                    💡 <strong>Tip:</strong> Take clear, well-lit photos with your camera first, then select them here. You can select multiple photos at once!
+                </p>
+            </div>
+
+            <!-- Quick Stats -->
+            <div id="stats-section" class="grid grid-cols-3 gap-4 mt-6 hidden">
+                <div class="stat-card text-center">
+                    <div class="stat-number text-blue-600" id="stat-photos">0</div>
+                    <div class="stat-label">Photos</div>
+                </div>
+                <div class="stat-card text-center">
+                    <div class="stat-number text-green-600" id="stat-found">0</div>
+                    <div class="stat-label">Found</div>
+                </div>
+                <div class="stat-card text-center">
+                    <div class="stat-number text-red-600" id="stat-failed">0</div>
+                    <div class="stat-label">Not Found</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Photos Grid -->
+        <div id="photos-section" class="bg-white p-6 rounded-lg shadow-md mb-6 hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-700">
+                    📸 Uploaded Photos (<span id="photo-count">0</span>)
+                </h2>
+                <button id="btn-clear-all" 
+                        class="py-2 px-4 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition duration-200">
+                    🗑️ Clear All
+                </button>
+            </div>
+            
+            <div id="photos-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <!-- Photos will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Scan Button -->
+        <div id="scan-section" class="bg-white p-6 rounded-lg shadow-md mb-6 hidden">
+            <button id="btn-scan" 
+                    class="w-full py-5 px-6 bg-gradient-to-r from-green-600 to-green-700 text-white text-center rounded-lg font-bold hover:from-green-700 hover:to-green-800 transition duration-200 text-xl shadow-lg">
+                🔍 Scan All Barcodes Now
+            </button>
+            <p class="text-sm text-gray-600 mt-3 text-center">This will process all uploaded photos and extract barcodes</p>
+        </div>
+
+        <!-- Progress Section -->
+        <div id="progress-section" class="bg-white p-6 rounded-lg shadow-md mb-6 hidden">
+            <h2 class="text-lg font-semibold text-gray-700 mb-4">⏳ Scanning Progress</h2>
+            <div class="progress-bar mb-2">
+                <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <p id="progress-text" class="text-sm text-gray-600 text-center">Processing: 0 / 0</p>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results-section" class="bg-white p-6 rounded-lg shadow-md hidden">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
+                <h2 class="text-2xl font-semibold text-gray-700">
+                    ✅ Scan Results (<span id="results-count">0</span> barcodes detected)
+                </h2>
+                <div class="flex space-x-2">
+                    <button id="btn-copy-all" 
+                            class="py-2 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition duration-200 flex items-center gap-2">
+                        📋 Copy All
+                    </button>
+                    <button id="btn-export-csv" 
+                            class="py-2 px-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition duration-200 flex items-center gap-2">
+                        💾 Export CSV
+                    </button>
+                </div>
+            </div>
+
+            <!-- Results Table -->
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Photo</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Filename</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Barcode</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Results will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Hidden canvas for image processing -->
+    <canvas id="photo-canvas"></canvas>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM References ---
+            const fileInput = document.getElementById('file-input');
+            const photosSection = document.getElementById('photos-section');
+            const photosGrid = document.getElementById('photos-grid');
+            const photoCount = document.getElementById('photo-count');
+            const scanSection = document.getElementById('scan-section');
+            const btnScan = document.getElementById('btn-scan');
+            const btnClearAll = document.getElementById('btn-clear-all');
+            const progressSection = document.getElementById('progress-section');
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+            const resultsSection = document.getElementById('results-section');
+            const resultsCount = document.getElementById('results-count');
+            const resultsBody = document.getElementById('results-body');
+            const btnCopyAll = document.getElementById('btn-copy-all');
+            const btnExportCsv = document.getElementById('btn-export-csv');
+            const statsSection = document.getElementById('stats-section');
+            const statPhotos = document.getElementById('stat-photos');
+            const statFound = document.getElementById('stat-found');
+            const statFailed = document.getElementById('stat-failed');
+
+            // --- State ---
+            let photos = []; // Array of {id, file, url, result: null}
+            let isScanning = false;
+
+            // --- Helper Functions ---
+            function generateId() {
+                return Date.now() + Math.random().toString(36).substr(2, 9);
+            }
+
+            function addPhotos(files) {
+                const fileArray = Array.from(files);
+                let addedCount = 0;
+
+                fileArray.forEach(file => {
+                    if (!file.type.startsWith('image/')) return;
+
+                    const id = generateId();
+                    const url = URL.createObjectURL(file);
+                    
+                    photos.push({
+                        id: id,
+                        file: file,
+                        url: url,
+                        result: null
+                    });
+
+                    renderPhoto(id, url);
+                    addedCount++;
+                });
+
+                if (addedCount > 0) {
+                    updateUI();
+                    // Scroll to photos section
+                    setTimeout(() => {
+                        photosSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
+                }
+            }
+
+            function renderPhoto(id, url) {
+                const photoDiv = document.createElement('div');
+                photoDiv.id = `photo-${id}`;
+                photoDiv.className = 'photo-preview bg-gray-200';
+                photoDiv.innerHTML = `
+                    <div class="remove-btn" onclick="removePhoto('${id}')" title="Remove photo">×</div>
+                    <img src="${url}" alt="Photo" loading="lazy">
+                    <div id="status-${id}" class="status-badge hidden">
+                        Processing...
+                    </div>
+                `;
+                photosGrid.appendChild(photoDiv);
+            }
+
+            window.removePhoto = function(id) {
+                const photo = photos.find(p => p.id === id);
+                if (photo) {
+                    URL.revokeObjectURL(photo.url);
+                    photos = photos.filter(p => p.id !== id);
+                    document.getElementById(`photo-${id}`).remove();
+                    updateUI();
+                }
+            };
+
+            function clearAllPhotos() {
+                if (photos.length === 0) return;
+                
+                if (confirm(`Clear all ${photos.length} photos and results?`)) {
+                    photos.forEach(photo => URL.revokeObjectURL(photo.url));
+                    photos = [];
+                    photosGrid.innerHTML = '';
+                    resultsBody.innerHTML = '';
+                    updateUI();
+                }
+            }
+
+            function updateUI() {
+                const total = photos.length;
+                const found = photos.filter(p => p.result && p.result.success).length;
+                const failed = photos.filter(p => p.result && !p.result.success).length;
+
+                photoCount.textContent = total;
+                statPhotos.textContent = total;
+                statFound.textContent = found;
+                statFailed.textContent = failed;
+                
+                if (total > 0) {
+                    photosSection.classList.remove('hidden');
+                    scanSection.classList.remove('hidden');
+                    statsSection.classList.remove('hidden');
+                } else {
+                    photosSection.classList.add('hidden');
+                    scanSection.classList.add('hidden');
+                    resultsSection.classList.add('hidden');
+                    progressSection.classList.add('hidden');
+                    statsSection.classList.add('hidden');
+                }
+            }
+
+            function updateProgress(current, total) {
+                const percent = (current / total) * 100;
+                progressFill.style.width = `${percent}%`;
+                progressText.textContent = `Processing: ${current} / ${total}`;
+            }
+
+            function updatePhotoStatus(id, status, result = null) {
+                const statusEl = document.getElementById(`status-${id}`);
+                if (!statusEl) return;
+
+                statusEl.classList.remove('hidden', 'status-processing', 'status-success', 'status-error');
+                
+                if (status === 'processing') {
+                    statusEl.classList.add('status-processing');
+                    statusEl.textContent = '⏳';
+                } else if (status === 'success') {
+                    statusEl.classList.add('status-success');
+                    statusEl.textContent = '✓';
+                } else if (status === 'error') {
+                    statusEl.classList.add('status-error');
+                    statusEl.textContent = '✗';
+                }
+            }
+
+            // --- Barcode Scanning Functions ---
+            async function scanAllPhotos() {
+                if (isScanning || photos.length === 0) return;
+
+                isScanning = true;
+                btnScan.disabled = true;
+                btnScan.textContent = '⏳ Scanning in progress...';
+                progressSection.classList.remove('hidden');
+                resultsBody.innerHTML = '';
+                resultsSection.classList.add('hidden');
+
+                // Reset all photo results
+                photos.forEach(p => p.result = null);
+
+                let processed = 0;
+                const total = photos.length;
+
+                // Scroll to progress
+                setTimeout(() => {
+                    progressSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 100);
+
+                for (const photo of photos) {
+                    updatePhotoStatus(photo.id, 'processing');
+                    
+                    try {
+                        const result = await scanSingleImage(photo.url);
+                        photo.result = result;
+                        
+                        if (result.success) {
+                            updatePhotoStatus(photo.id, 'success', result);
+                        } else {
+                            updatePhotoStatus(photo.id, 'error');
+                        }
+                    } catch (error) {
+                        console.error(`Error scanning photo ${photo.id}:`, error);
+                        photo.result = { success: false, error: error.message };
+                        updatePhotoStatus(photo.id, 'error');
+                    }
+
+                    processed++;
+                    updateProgress(processed, total);
+                }
+
+                displayResults();
+                
+                isScanning = false;
+                btnScan.disabled = false;
+                btnScan.textContent = '🔍 Scan All Barcodes Now';
+                updateUI();
+
+                // Scroll to results
+                setTimeout(() => {
+                    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 300);
+            }
+
+            function scanSingleImage(imageUrl) {
+                return new Promise((resolve) => {
+                    // Multiple decoding strategies for better accuracy
+                    const strategies = [
+                        {
+                            name: "Quick Scan",
+                            readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "upc_reader", "upc_e_reader"],
+                            patchSize: "medium",
+                            halfSample: true
+                        },
+                        {
+                            name: "Detailed Scan",
+                            readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "upc_reader", "upc_e_reader"],
+                            patchSize: "large",
+                            halfSample: false
+                        },
+                        {
+                            name: "Deep Scan",
+                            readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "code_39_vin_reader", "codabar_reader", "upc_reader", "upc_e_reader", "i2of5_reader", "2of5_reader"],
+                            patchSize: "x-large",
+                            halfSample: false
+                        }
+                    ];
+
+                    let attemptIndex = 0;
+
+                    function tryDecode() {
+                        if (attemptIndex >= strategies.length) {
+                            resolve({ success: false, error: "No barcode detected" });
+                            return;
+                        }
+
+                        const strategy = strategies[attemptIndex];
+                        const config = {
+                            src: imageUrl,
+                            decoder: {
+                                readers: strategy.readers
+                            },
+                            locate: true,
+                            locator: {
+                                patchSize: strategy.patchSize,
+                                halfSample: strategy.halfSample
+                            }
+                        };
+
+                        Quagga.decodeSingle(config, (result) => {
+                            if (result && result.codeResult && result.codeResult.code) {
+                                resolve({
+                                    success: true,
+                                    code: result.codeResult.code,
+                                    format: result.codeResult.format,
+                                    strategy: strategy.name
+                                });
+                            } else {
+                                attemptIndex++;
+                                setTimeout(tryDecode, 50);
+                            }
+                        });
+                    }
+
+                    tryDecode();
+                });
+            }
+
+            function displayResults() {
+                resultsBody.innerHTML = '';
+                
+                const successfulScans = photos.filter(p => p.result && p.result.success);
+                resultsCount.textContent = successfulScans.length;
+
+                photos.forEach((photo, index) => {
+                    const row = document.createElement('tr');
+                    
+                    const result = photo.result;
+                    const isSuccess = result && result.success;
+                    const statusClass = isSuccess ? 'text-green-600' : 'text-red-600';
+                    const statusText = isSuccess ? '✓ Detected' : '✗ Not Found';
+                    const barcodeText = isSuccess ? result.code : '-';
+                    const formatText = isSuccess ? result.format : '-';
+                    const filename = photo.file.name;
+                    const shortFilename = filename.length > 20 ? filename.substring(0, 17) + '...' : filename;
+
+                    row.innerHTML = `
+                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">${index + 1}</td>
+                        <td class="px-4 py-4 whitespace-nowrap">
+                            <img src="${photo.url}" alt="Photo" class="w-20 h-16 object-cover rounded border-2 ${isSuccess ? 'border-green-500' : 'border-red-500'}">
+                        </td>
+                        <td class="px-4 py-4 text-sm text-gray-600" title="${filename}">${shortFilename}</td>
+                        <td class="px-4 py-4 text-sm text-gray-900 font-mono font-bold ${isSuccess ? 'text-green-700' : ''}">${barcodeText}</td>
+                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${formatText}</td>
+                        <td class="px-4 py-4 whitespace-nowrap text-sm font-medium ${statusClass}">${statusText}</td>
+                    `;
+
+                    resultsBody.appendChild(row);
+                });
+
+                resultsSection.classList.remove('hidden');
+            }
+
+            function copyAllBarcodes() {
+                const barcodes = photos
+                    .filter(p => p.result && p.result.success)
+                    .map(p => p.result.code)
+                    .join('\n');
+
+                if (!barcodes) {
+                    alert('No barcodes to copy!');
+                    return;
+                }
+
+                navigator.clipboard.writeText(barcodes).then(() => {
+                    const originalText = btnCopyAll.innerHTML;
+                    btnCopyAll.innerHTML = '✓ Copied!';
+                    btnCopyAll.classList.add('bg-green-600');
+                    btnCopyAll.classList.remove('bg-blue-600');
+                    
+                    setTimeout(() => {
+                        btnCopyAll.innerHTML = originalText;
+                        btnCopyAll.classList.remove('bg-green-600');
+                        btnCopyAll.classList.add('bg-blue-600');
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                    alert('Barcodes:\n\n' + barcodes);
+                });
+            }
+
+            function exportToCSV() {
+                const successfulScans = photos.filter(p => p.result && p.result.success);
+                
+                if (successfulScans.length === 0) {
+                    alert('No barcodes to export!');
+                    return;
+                }
+
+                let csv = 'Index,Filename,Barcode,Type\n';
+                
+                successfulScans.forEach((photo, index) => {
+                    const filename = photo.file.name.replace(/"/g, '""'); // Escape quotes
+                    const barcode = photo.result.code.replace(/"/g, '""');
+                    const type = photo.result.format;
+                    csv += `${index + 1},"${filename}","${barcode}","${type}"\n`;
+                });
+
+                // Download CSV
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const timestamp = new Date().toISOString().split('T')[0];
+                a.download = `barcodes_${timestamp}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                // Visual feedback
+                const originalText = btnExportCsv.innerHTML;
+                btnExportCsv.innerHTML = '✓ Downloaded!';
+                btnExportCsv.classList.add('bg-green-600');
+                
+                setTimeout(() => {
+                    btnExportCsv.innerHTML = originalText;
+                    btnExportCsv.classList.remove('bg-green-600');
+                    btnExportCsv.classList.add('bg-green-600');
+                }, 2000);
+            }
+
+            // --- Event Listeners ---
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    addPhotos(e.target.files);
+                }
+                e.target.value = ''; // Reset input for re-selection
+            });
+
+            btnScan.addEventListener('click', scanAllPhotos);
+            btnClearAll.addEventListener('click', clearAllPhotos);
+            btnCopyAll.addEventListener('click', copyAllBarcodes);
+            btnExportCsv.addEventListener('click', exportToCSV);
+
+            // Prevent accidental page close
+            window.addEventListener('beforeunload', (e) => {
+                if (photos.length > 0) {
+                    e.preventDefault();
+                    e.returnValue = '';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
